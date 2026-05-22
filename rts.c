@@ -436,6 +436,41 @@ int up_skills(cJSON *root, char *name, int count){
 	return 1;
 }
 
+// работа с кузней
+int add_big_ach(cJSON *root, int count){
+	if(root == NULL){
+		printf("Не удалось достать структуру root в add_big_ach\n");
+		return ERR1;
+	}
+	else if(count == 0){
+		printf("Достижений не может быть 0\n");
+		return ERR1;
+	}
+	
+	cJSON *forge = cJSON_GetObjectItem(root, "forge");
+	if(forge == NULL){
+		printf("Не удалось достать структуру forge в add_big_ach\n");
+		return ERR1;
+	}
+	
+	cJSON *big_achievements = cJSON_GetObjectItem(forge, "big_achievements");
+	if(big_achievements == NULL && !(cJSON_IsNumber(big_achievements))){
+		printf("Не удалось достать big_achievements\n");	
+		return ERR1;
+	}
+	int count_forge = big_achievements->valueint;
+
+	count_forge += count;
+	cJSON_SetNumberValue(big_achievements, count_forge);
+
+	if(fit_time_root(root, forge) < 0){
+		printf("Не удалось добавить время в кузню\n");
+		return ERR1;
+	}
+
+	return 1;
+}
+
 
 // добавление с нуля, возвращает -1 если плохо все
 int create_ikingdom(cJSON *root){
@@ -662,6 +697,17 @@ int main(int argc, char *argv[]){
 		}
 		if(up_skills(root, argv[2], count) < 0){
 			printf("Не удалось прокачать скилл\n");
+			cJSON_Delete(root);
+			return 0;
+		}
+		save_in_file(root, "ikingdom.json");
+		cJSON_Delete(root);
+		return 0;
+	}
+	else if(argc == 3 && strcmp(argv[1], "forge") == 0){
+		int count = atoi(argv[2]);
+		if(add_big_ach(root, count) < 0){
+			printf("Не удалось добавить большое достижение в кузню\n");
 			cJSON_Delete(root);
 			return 0;
 		}
