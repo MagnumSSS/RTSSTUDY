@@ -471,6 +471,34 @@ int add_big_ach(cJSON *root, int count){
 	return 1;
 }
 
+// создание библиотеки
+cJSON* create_library(){
+	cJSON *library = file_in_json("library.json");
+	if(library == NULL){
+		library = cJSON_CreateObject();
+		if(library == NULL){
+			printf("Не удалось создать библиотеку\n");
+			return NULL;
+		}
+		if(add_time(library) < 0){
+			printf("Не удалось создать время библиотеке\n");
+			return NULL;
+		}
+		save_in_file(library, "library.json");
+		return library;
+	}
+
+	cJSON *time = cJSON_GetObjectItem(library, "time");
+	if(time == NULL){
+		time = cJSON_CreateObject();
+		if(time == NULL){
+			printf("Не удалось создать время библиотеке (2)\n");
+			return NULL;
+		}
+	}
+	save_in_file(library, "library.json");
+	return library;
+}
 
 // добавление с нуля, возвращает -1 если плохо все
 int create_ikingdom(cJSON *root){
@@ -715,6 +743,20 @@ int main(int argc, char *argv[]){
 		cJSON_Delete(root);
 		return 0;
 	}
+	// Обработчики для библиотеки 
+	else if(argc == 2 && strcmp(argv[1], "init_library") == 0){
+		cJSON *library = create_library();
+		if(library == NULL){
+			cJSON_Delete(root);
+			cJSON_Delete(library);
+			return 0;
+		}
+		printf("Библиотека создана\n");
+		cJSON_Delete(root);
+		cJSON_Delete(library);
+		return 0;
+	}
+
 	else {
 		printf("Вы ввели неправильную команду\n");
 	}
