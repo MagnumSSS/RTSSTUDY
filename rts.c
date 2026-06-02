@@ -500,6 +500,65 @@ cJSON* create_library(){
 	return library;
 }
 
+// добавление книги в библиотеку
+int add_book(cJSON *l_root, char *book_name, char *author, int pages){
+	// проверка на нулл поинтеры
+	if(l_root == NULL){
+		printf("Библиотека не найдена в add_book\n");
+		return ERR1;
+	}
+	else if(book_name == NULL){
+		printf("Не прочитано название книги\n");
+		return ERR1;
+	}
+	else if(author == NULL){
+		printf("Не прочитано имя автора\n");
+		return ERR1;
+	}
+	else if(pages == 0){
+		printf("у книги не может быть 0 страниц\n");
+		return ERR1;
+	}
+
+	// создание книги - структуры
+	cJSON *book_obj = cJSON_CreateObject();
+	if(book_obj == NULL){
+		printf("Не удалось создать объект книгу\n");
+		return ERR1;
+	}
+	
+
+	// добавление автора
+	cJSON *author_obj = cJSON_CreateString(author);
+	if(author_obj == NULL){
+		printf("Не удалось создать объект автор\n");
+		cJSON_Delete(book_obj);
+		return ERR1;
+	}
+	cJSON_AddItemToObject(book_obj, "author", author_obj);
+	
+	// добавление всеx страниц
+	cJSON *pages_obj = cJSON_CreateNumber(pages);
+	if(pages_obj == NULL){
+		printf("Не удалось создать объект страницы\n");
+		cJSON_Delete(book_obj);
+		cJSON_Delete(author_obj);
+		return ERR1;
+	}
+	cJSON_AddItemToObject(book_obj, "pages", pages_obj);
+
+	// добавление прочитанных страниц
+	cJSON_AddItemToObject(book_obj, "reading_pages", cJSON_CreateNumber(0));
+	// добавление статуса прочитанности (не читал, читаю, прочитано (потом еще добавится с патчем ОБРАЗОВАНИЯ))
+	cJSON_AddItemToObject(book_obj, "status", cJSON_CreateString("Еще не читал"));
+
+	// добавление самой структуры книги
+	cJSON_AddItemToObject(l_root, book_name, book_obj);
+
+	save_in_file(l_root, "library.json");
+	return 1;
+}	
+
 // добавление с нуля, возвращает -1 если плохо все
 int create_ikingdom(cJSON *root){
 	if(root == NULL){
@@ -698,7 +757,7 @@ int main(int argc, char *argv[]){
 		save_in_file(root, "ikingdom.json");
 	}
 	// установка своих скиллов
-	else if(argc == 3 && strcmp(argv[1], "set_skill") == 0){
+	else if(argc == 3 && strcmp(argv[1], "add_skill") == 0){
 		if(set_skills(root, argv[2]) < 0){
 			printf("Не удалось поставить время по какой то ошибке\n");
 			cJSON_Delete(root);
@@ -748,7 +807,6 @@ int main(int argc, char *argv[]){
 		cJSON *library = create_library();
 		if(library == NULL){
 			cJSON_Delete(root);
-			cJSON_Delete(library);
 			return 0;
 		}
 		printf("Библиотека создана\n");
@@ -756,7 +814,28 @@ int main(int argc, char *argv[]){
 		cJSON_Delete(library);
 		return 0;
 	}
+	// добавление книги
+	else if(argc == 5 && strcmp(argv[1], "add_book_library") == 0){
+		cJSON *library = create_library();
+		if(library == NULL){
+			cJSON_Delete(root);
+			return 0;
+		}
+		int pages = atoi(argv[4]);
+		if(add_book(library, argv[2], argv[3], pages) < 0){
+			printf("Не удалось добавить книгу\n");
+			cJSON_Delete(root);
+			cJSON_Delete(library);
+			return 0;
+		}
 
+		printf("Книга %s добавлена\n", argv[2]);
+		cJSON_Delete(root);
+		cJSON_Delete(library);
+		return 0;
+	}
+	// прочитывание книги
+	
 	else {
 		printf("Вы ввели неправильную команду\n");
 	}
