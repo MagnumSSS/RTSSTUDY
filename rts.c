@@ -5,6 +5,16 @@
 
 #define ERR1 -1
 
+// Паттерн: CHECK_NULL — если NULL, печатаем и возвращаем ERR1
+#define CHECK_NULL(ptr, msg) \
+    do { \
+        if ((ptr) == NULL) { \
+            printf("%s\n", msg); \
+            return ERR1; \
+        } \
+    } while(0)
+
+
 // структура для времени
 typedef struct{
 	int Year;
@@ -621,6 +631,56 @@ int reading_book(cJSON *root, cJSON *l_root, char *name, int count_pages){
 	return 1;
 }
 
+/* пока не знаю зачем парсер ранга
+int parse_rank(char *rank){
+	if(rank == NULL){
+		printf("Не удалось прочитать ранг цели\n");
+		return ERR1;
+	}
+
+
+	int ranks_eq_number = 90;
+	char *ranks[] = {"S", "A", "B", "C", "D"};
+	int size = sizeof(ranks) / sizeof(ranks[0]);
+	for(int i = 0; i < size; i++){
+		if(strcmp(rank, ranks[i]) == 0){
+			return ranks_eq_number;
+		}
+		ranks_eq_number 
+	}	
+	
+}
+*/
+
+int set_purpose(cJSON *root, char *name_purpose, char *rank_purpose){
+	if(root == NULL){
+		printf("Не удалось принять структуру json в set_purpose\n");
+		return ERR1;
+	} else if(name_purpose == NULL){
+		printf("Не удалось принять имя цели в set_purpose\n");
+		return ERR1;
+	} else if(rank_purpose == NULL){
+		printf("Не удалось принять ранг цели в set_purpose\n");
+		return ERR1;
+	}
+
+	cJSON *hunter_table = cJSON_GetObjectItem(root, "hunter_table");
+	if(hunter_table == NULL){
+		printf("Не удалось достать структуру json в set_purpose\n");
+		return ERR1;
+	}
+
+	cJSON *purpose = cJSON_CreateObject();
+	if(purpose == NULL){
+		printf("Не удалось создать структуру json в set_purpose\n");
+		return ERR1;
+	}
+	cJSON_AddItemToObject(purpose, "rank", cJSON_CreateString(rank_purpose));
+	cJSON_AddItemToObject(hunter_table, name_purpose, purpose);
+	save_in_file(root, "ikingdom.json");
+	return 1;
+}
+
 // добавление с нуля, возвращает -1 если плохо все
 int create_ikingdom(cJSON *root){
 	if(root == NULL){
@@ -674,7 +734,7 @@ int create_ikingdom(cJSON *root){
 	cJSON_AddItemToObject(root, "skills", skills);
 			
 
-	// создаем и добавляем поле
+	// создаем и добавляем кузню
 	cJSON *forge = cJSON_CreateObject();
 	if(forge == NULL){
 		printf("не удалось создать объект forge\n");
@@ -690,6 +750,18 @@ int create_ikingdom(cJSON *root){
 	cJSON_AddItemToObject(forge, "big_achievements", forge_count);
 	if(add_time(forge) < 0){
 		printf("Не удалось добавить время кузнице\n");
+		return ERR1;
+	}
+
+	// создаем стол контрактов
+	cJSON *hunter_table = cJSON_CreateObject();
+	if(hunter_table == NULL){
+		printf("Не удалось создать стол контрактов\n");
+		return ERR1;
+	}
+	cJSON_AddItemToObject(root, "hunter_table", hunter_table);
+	if(add_time(hunter_table) < 0){
+		printf("Не удалось добавить время столку контрактов\n");
 		return ERR1;
 	}
 	
@@ -772,8 +844,6 @@ cJSON* check_create_ikingdom(){
 
 		// сохранили в файлик
 		save_in_file(root, "ikingdom.json");
-
-		return root;
 	}
 	
 	// проверка наличии кузни
@@ -792,6 +862,22 @@ cJSON* check_create_ikingdom(){
 			return NULL;
 		}
 		cJSON_AddItemToObject(root, "forge", forge);
+		save_in_file(root, "ikingdom.json");
+	}
+
+	cJSON *check_table = cJSON_GetObjectItem(root, "hunter_table");
+	if(check_table == NULL){
+		// создаем и добавляем поле
+		cJSON *hunter_table = cJSON_CreateObject();
+		if(hunter_table == NULL){
+			printf("не удалось создать объект hunter_table\n");
+			return NULL;
+		}
+		if(add_time(hunter_table) < 0){
+			printf("Не удалось создать время\n");
+			return NULL;
+		}
+		cJSON_AddItemToObject(root, "hunter_table", hunter_table);
 		save_in_file(root, "ikingdom.json");
 	}
 	return root;
@@ -821,7 +907,7 @@ int main(int argc, char *argv[]){
 	// установка своих скиллов
 	else if(argc == 3 && strcmp(argv[1], "add_skill") == 0){
 		if(set_skills(root, argv[2]) < 0){
-			printf("Не удалось поставить время по какой то ошибке\n");
+			printf("Не удалось добавить скилл по какой то ошибке\n");
 			cJSON_Delete(root);
 			return 0;
 		}
@@ -853,6 +939,15 @@ int main(int argc, char *argv[]){
 		cJSON_Delete(root);
 		return 0;
 	}
+	// добавление жертв в столе контрактов
+	else if(argc == 4 && strcmp(argv[1], "add_purpose") == 0){
+		if(set_purpose(root, argv[2], argv[3]) < 0){
+			printf("Не удалось поставить цель по какой то ошибке\n");
+			cJSON_Delete(root);
+			return 0;
+		}	
+	}
+	// добавление достижений в кузню
 	else if(argc == 3 && strcmp(argv[1], "forge") == 0){
 		int count = atoi(argv[2]);
 		if(add_big_ach(root, count) < 0){
