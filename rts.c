@@ -5,12 +5,28 @@
 
 #define ERR1 -1
 
-// Паттерн: CHECK_NULL — если NULL, печатаем и возвращаем ERR1
-#define CHECK_NULL(ptr, msg) \
+// Паттерн: CHECK_NULL — если NULL, печатаем и возвращаем
+#define CHECK_NULL_ERR1(ptr, msg) \
     do { \
         if ((ptr) == NULL) { \
             printf("%s\n", msg); \
             return ERR1; \
+        } \
+    } while(0)
+
+#define CHECK_NULL(ptr, msg) \
+    do { \
+        if ((ptr) == NULL) { \
+            printf("%s\n", msg); \
+            return NULL; \
+        } \
+    } while(0)
+
+#define CHECK_NULL_VOID(ptr, msg) \
+    do { \
+        if ((ptr) == NULL) { \
+            printf("%s\n", msg); \
+            return; \
         } \
     } while(0)
 
@@ -30,10 +46,7 @@ int add_time(cJSON *root);
 // загрузка из файла в json
 cJSON* file_in_json(char *name){
 	FILE *fp = fopen(name, "r");
-	if(fp == NULL){
-		printf("Не открывается файл json(1.1)\n");
-		return NULL;
-	}
+	CHECK_NULL(fp, "Не открывается файл json(1.1)\n");
 
 	fseek(fp, 0, SEEK_END);
 	long size_file = ftell(fp);
@@ -76,10 +89,7 @@ cJSON* file_in_json(char *name){
 // загрузка из json-структуры в файл
 void save_in_file(cJSON *root, char *name){
 	FILE *fp = fopen(name, "w");
-	if(fp == NULL){
-		printf("Не открывается файл json(1)\n");
-		return;
-	}
+	CHECK_NULL_VOID(fp, "Не открывается файл json(1.1)\n");
 
 	char *json_txt = cJSON_Print(root);
 	if(json_txt == NULL){
@@ -96,10 +106,7 @@ void save_in_file(cJSON *root, char *name){
 
 // добавление полей для стихий
 int add_field_elements(cJSON *object){
-	if(object == NULL){
-		printf("Не удалось принять структуру json в add_field_elements\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(object, "Не удалось принять структуру json в add_field_elements\n");
 
 	cJSON_AddItemToObject(object, "level", cJSON_CreateNumber(0));
 	cJSON_AddItemToObject(object, "xp", cJSON_CreateNumber(0));
@@ -114,10 +121,7 @@ int add_field_elements(cJSON *object){
 
 // добавление стандартных стихий
 int add_standart_elements(cJSON *skills){
-	if(skills == NULL){
-		printf("Не удалось принять структуру json в add_standart_elements\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(skills, "Не удалось принять структуру json в add_standart_elements\n");
 
 	char *names[] = {"focus", "discipline", "structure", "resilience"};
 	int size = sizeof(names) / sizeof(names[0]);
@@ -136,12 +140,11 @@ int add_standart_elements(cJSON *skills){
 
 // добавление времени объекту
 int add_time(cJSON *root){
+	CHECK_NULL_ERR1(root, "Не удалось принять структуру json в add_time\n");
+
 	// добавление времени
 	cJSON *time = cJSON_CreateObject();
-	if(time == NULL){
-		printf("не удалось создать объект time\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(time, "не удалось создать объект time\n");
 	cJSON_AddItemToObject(root, "time", time);
 
 	cJSON_AddItemToObject(time, "DAY", cJSON_CreateNumber(0));
@@ -152,16 +155,10 @@ int add_time(cJSON *root){
 
 // установка времени. дают структуру в которой есть структура time, достаем поля
 int set_day(cJSON *root, Time time){
-	if(root == NULL){
-		printf("Не удалось поставить время в set_day\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(root, "Не удалось принять структуру json в set_day\n");
 	
 	cJSON *obj_time = cJSON_GetObjectItem(root, "time");
-	if(obj_time == NULL){
-		printf("Не удалось достать объект time в set_day\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(obj_time, "Не удалось достать объект time в set_day\n");
 
 	cJSON *obj_day = cJSON_GetObjectItem(obj_time, "DAY");
 	if(obj_day == NULL && !(cJSON_IsNumber(obj_day))){
@@ -199,32 +196,17 @@ int set_day(cJSON *root, Time time){
 
 // создание своих скиллов
 int set_skills(cJSON *root, char *name){
-	if(root == NULL){
-		printf("Не удалось вытащить структуру root в set_skills\n");
-		return ERR1;
-	}
-	else if(name == NULL){
-		printf("Не удалось вытащить имя скилла в set_skills\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(root, "Не удалось вытащить структуру root в set_skills\n");
+	CHECK_NULL_ERR1(name, "Не удалось вытащить имя скилла в set_skills\n");
 	
 	cJSON *skills = cJSON_GetObjectItem(root, "skills");
-	if(skills == NULL){
-		printf("Не удалось вытащить skills в set_skills\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(skills, "Не удалось вытащить skills в set_skills\n");
 
 	cJSON *my_skills = cJSON_GetObjectItem(skills, "my_skills");
-	if(my_skills == NULL){
-		printf("Не удалось вытащить my_skills в set_skills\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(my_skills, "Не удалось вытащить my_skills в set_skills\n");
 
 	cJSON *new_skills = cJSON_CreateObject();
-	if(new_skills == NULL){
-		printf("Не удалось создать new_skills в set_skills\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(new_skills, "Не удалось создать new_skills в set_skills\n");
 
 	if(add_field_elements(new_skills) < 0){
 		printf("Не удалось добавить поля объекту new_skills в set_skills\n");
@@ -237,72 +219,42 @@ int set_skills(cJSON *root, char *name){
 
 // подгонка времени с главной структуры в активные 
 int fit_time_root(cJSON *root, cJSON *object){
-	if(root == NULL){
-		printf("Не удается достать root в fit_time_root\n");
-		return ERR1;
-	}
-	else if(object == NULL){
-		printf("Не удается достать object в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(root, "Не удается достать root в fit_time_root\n");
+	CHECK_NULL_ERR1(object, "Не удается достать object в fit_time_root\n");
 
 	// достаем структуру time из root'a 
 	cJSON *time = cJSON_GetObjectItem(root, "time");
-	if(time == NULL){
-		printf("Не удается достать time в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(time, "Не удается достать time в fit_time_root\n");
 	
 	cJSON *day = cJSON_GetObjectItem(time, "DAY");
-	if(day == NULL){
-		printf("Не удается достать day в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(day, "Не удается достать day в fit_time_root\n");
 	int iday = day->valueint;
 
 
 	cJSON *month = cJSON_GetObjectItem(time, "MONTH");
-	if(month == NULL){
-		printf("Не удается достать month в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(month, "Не удается достать month в fit_time_root\n");
 	int imonth = month->valueint;
 
 	
 	cJSON *year = cJSON_GetObjectItem(time, "YEAR");
-	if(year == NULL){
-		printf("Не удается достать year в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(year, "Не удается достать year в fit_time_root\n");
 	int iyear = year->valueint;
 
 
 	// достаем структуру time из объекта
 	cJSON *obj_time = cJSON_GetObjectItem(object, "time");
-	if(obj_time == NULL){
-		printf("Не удается достать obj_time в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(obj_time, "Не удается достать obj_time в fit_time_root\n");
 
 	cJSON *obj_day = cJSON_GetObjectItem(obj_time, "DAY");
-	if(obj_day == NULL){
-		printf("Не удается достать obj_day в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(obj_day, "Не удается достать obj_day в fit_time_root\n");
 	if(obj_day->valueint != iday) cJSON_SetNumberValue(obj_day, iday);
 
 	cJSON *obj_month = cJSON_GetObjectItem(obj_time, "MONTH");
-	if(obj_month == NULL){
-		printf("Не удается достать obj_month в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(obj_month, "Не удается достать obj_month в fit_time_root\n");
 	if(obj_month->valueint != imonth) cJSON_SetNumberValue(obj_month, imonth);
 	
 	cJSON *obj_year = cJSON_GetObjectItem(obj_time, "YEAR");
-	if(obj_year == NULL){
-		printf("Не удается достать obj_year в fit_time_root\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(obj_year, "Не удается достать obj_year в fit_time_root\n");
 	if(obj_year->valueint != iyear) cJSON_SetNumberValue(obj_year, iyear);
 	return 1;
 		
@@ -310,10 +262,7 @@ int fit_time_root(cJSON *root, cJSON *object){
 
 // математическая функция прокачки скилла
 int math_up(cJSON *skill, int count){
-	if(skill == NULL){
-		printf("Не удается достать skill в math_up\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(skill, "Не удается достать skill в math_up\n");
 	
 	cJSON *xp = cJSON_GetObjectItem(skill, "xp");
 	if(xp == NULL && !(cJSON_IsNumber(xp))){
@@ -355,36 +304,26 @@ int math_up(cJSON *skill, int count){
 
 // функция прокачки стандартных скиллов
 int up_standart_skill(cJSON *root, char *name, int count){
-	if(root == NULL){
-		printf("Не удалось вытащить структуру root в up_standart_skill\n");
-		return ERR1; 
-	}
-	else if(name == NULL){
-		printf("Не удалось вытащить имя скилла в up_standart_skill\n");
-		return ERR1;
-	}
-	else if(count <= 0){
+	CHECK_NULL_ERR1(root, "Не удалось вытащить структуру root в up_standart_skill\n");
+	CHECK_NULL_ERR1(name, "Не удалось вытащить имя скилла в up_standart_skill\n");
+  if(count <= 0){
 		printf("Колво очков прокачки скилла не может быть равно 0\n");
 		return ERR1;
 	}
 
 	cJSON *skills = cJSON_GetObjectItem(root, "skills");
+	CHECK_NULL_ERR1(skills, "Не удалось вытащить skills в up_standart_skill\n");
 	if(skills == NULL){
 		printf("Не удалось вытащить skills в up_standart_skill\n");
 		return ERR1;
 	}
 
 	cJSON *standart_skills = cJSON_GetObjectItem(skills, "standart_skills");
-	if(skills == NULL){
-		printf("Не удалось вытащить standart_skills в up_standart_skill\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(standart_skills, "Не удалось вытащить standart_skills в up_standart_skill\n");
 	
 	cJSON *up_skill = cJSON_GetObjectItem(standart_skills, name);
-	if(up_skill == NULL){
-		printf("Не удалось вытащить %s в up_standart_skill\n", name);
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(up_skill, "Не удалось вытащить up_скилл в up_standart_skill\n");
+	
 	// осталось добавить проверку прокачки скилла
 	if(math_up(up_skill, count) < 0){
 		printf("Не удалось прокачать скилл %s\n", name);
@@ -402,35 +341,21 @@ int up_standart_skill(cJSON *root, char *name, int count){
 
 // функция прокачки собственных скиллов
 int up_skills(cJSON *root, char *name, int count){
-	if(root == NULL){
-		printf("Не удалось вытащить структуру root в up_skill\n");
-		return ERR1; 
-	}
-	else if(name == NULL){
-		printf("Не удалось вытащить имя скилла в up_skill\n");
-		return ERR1;
-	}
-	else if(count <= 0){
+	CHECK_NULL_ERR1(root, "Не удалось вытащить структуру root в up_skill\n");
+	CHECK_NULL_ERR1(name, "Не удалось вытащить имя скилла в up_skill\n");
+	if(count <= 0){
 		printf("Колво очков прокачки скилла не может быть равно 0\n");
 		return ERR1;
 	}
 	
 	cJSON *skills = cJSON_GetObjectItem(root, "skills");
-	if(skills == NULL){
-		printf("Не удалось вытащить skills в up_skill\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(skills, "Не удалось вытащить skills в up_skill\n");
 
 	cJSON *my_skills = cJSON_GetObjectItem(skills, "my_skills");
-	if(my_skills == NULL){
-		printf("Не удалось вытащить my_skills в up_skill\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(my_skills, "Не удалось вытащить my_skills в up_skill\n");
+	
 	cJSON *up_skill = cJSON_GetObjectItem(my_skills, name);
-	if(up_skill == NULL){
-		printf("Не удалось вытащить %s в up_skill\n", name);
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(up_skill, "Не удалось вытащить up_скилл в up_skill\n");
 	// осталось добавить проверку прокачки скилла
 	if(math_up(up_skill, count) < 0){
 		printf("Не удалось прокачать скилл %s\n", name);
@@ -448,20 +373,14 @@ int up_skills(cJSON *root, char *name, int count){
 
 // работа с кузней
 int add_big_ach(cJSON *root, int count){
-	if(root == NULL){
-		printf("Не удалось достать структуру root в add_big_ach\n");
-		return ERR1;
-	}
-	else if(count <= 0){
+	CHECK_NULL_ERR1(root, "Не удалось достать структуру root в add_big_ach\n");
+	if(count <= 0){
 		printf("Достижений не может быть 0\n");
 		return ERR1;
 	}
 	
 	cJSON *forge = cJSON_GetObjectItem(root, "forge");
-	if(forge == NULL){
-		printf("Не удалось достать структуру forge в add_big_ach\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(forge, "Не удалось достать структуру forge в add_big_ach\n");
 	
 	cJSON *big_achievements = cJSON_GetObjectItem(forge, "big_achievements");
 	if(big_achievements == NULL && !(cJSON_IsNumber(big_achievements))){
@@ -486,10 +405,7 @@ cJSON* create_library(){
 	cJSON *library = file_in_json("library.json");
 	if(library == NULL){
 		library = cJSON_CreateObject();
-		if(library == NULL){
-			printf("Не удалось создать библиотеку\n");
-			return NULL;
-		}
+		CHECK_NULL(library, "Не удалось создать библиотеку\n");
 		save_in_file(library, "library.json");
 		return library;
 	}
@@ -500,30 +416,17 @@ cJSON* create_library(){
 // добавление книги в библиотеку
 int add_book(cJSON *l_root, char *book_name, char *author, int pages){
 	// проверка на нулл поинтеры
-	if(l_root == NULL){
-		printf("Библиотека не найдена в add_book\n");
-		return ERR1;
-	}
-	else if(book_name == NULL){
-		printf("Не прочитано название книги\n");
-		return ERR1;
-	}
-	else if(author == NULL){
-		printf("Не прочитано имя автора\n");
-		return ERR1;
-	}
-	else if(pages <= 0){
+	CHECK_NULL_ERR1(l_root, "Библиотека не найдена в add_book\n");
+	CHECK_NULL_ERR1(book_name, "Не прочитано название книги\n");
+	CHECK_NULL_ERR1(author, "Не прочитано имя автора\n");
+	if(pages <= 0){
 		printf("у книги не может быть 0 страниц\n");
 		return ERR1;
 	}
 
 	// создание книги - структуры
 	cJSON *book_obj = cJSON_CreateObject();
-	if(book_obj == NULL){
-		printf("Не удалось создать объект книгу\n");
-		return ERR1;
-	}
-	
+	CHECK_NULL_ERR1(book_obj, "Не удалось создать объект книгу\n");
 
 	// добавление автора
 	cJSON *author_obj = cJSON_CreateString(author);
@@ -562,25 +465,16 @@ int add_book(cJSON *l_root, char *book_name, char *author, int pages){
 
 // функция прочитывания книги(root для подгонки времени)
 int reading_book(cJSON *root, cJSON *l_root, char *name, int count_pages){
-	if(l_root == NULL){
-		printf("Не прочитан l_root в reading_book\n");
-		return ERR1;
-	}
-	else if(name == NULL){
-		printf("Не прочитано имя книги в reading_book\n");
-		return ERR1;
-	}
-	else if(count_pages <= 0){
+	CHECK_NULL_ERR1(l_root, "Не прочитан l_root в reading_book\n");
+	CHECK_NULL_ERR1(name, "Не прочитано имя книги в reading_book\n");
+	if(count_pages <= 0){
 		printf("Ты не можешь !прочитать! 0 страниц\n");
 		return ERR1;
 	}
 	
 	// достаем книгу
 	cJSON *book_obj = cJSON_GetObjectItem(l_root, name);
-	if(book_obj == NULL){
-		printf("Не удалось найти такую книгу\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(book_obj, "Не удалось найти такую книгу\n");
 
 	// достаем поле колво страниц, колво прочитанных и статус
 	cJSON *pages_obj = cJSON_GetObjectItem(book_obj, "pages");
@@ -653,28 +547,16 @@ int parse_rank(char *rank){
 */
 
 int set_purpose(cJSON *root, char *name_purpose, char *rank_purpose){
-	if(root == NULL){
-		printf("Не удалось принять структуру json в set_purpose\n");
-		return ERR1;
-	} else if(name_purpose == NULL){
-		printf("Не удалось принять имя цели в set_purpose\n");
-		return ERR1;
-	} else if(rank_purpose == NULL){
-		printf("Не удалось принять ранг цели в set_purpose\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(root, "Не удалось принять структуру json в set_purpose\n");
+	CHECK_NULL_ERR1(name_purpose, "Не удалось принять имя цели в set_purpose\n");
+	CHECK_NULL_ERR1(rank_purpose, "Не удалось принять ранг цели в set_purpose\n");
 
 	cJSON *hunter_table = cJSON_GetObjectItem(root, "hunter_table");
-	if(hunter_table == NULL){
-		printf("Не удалось достать структуру json в set_purpose\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(hunter_table, "Не удалось достать структуру json в set_purpose\n");
 
 	cJSON *purpose = cJSON_CreateObject();
-	if(purpose == NULL){
-		printf("Не удалось создать структуру json в set_purpose\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(purpose, "Не удалось создать структуру json в set_purpose\n");
+	
 	cJSON_AddItemToObject(purpose, "rank", cJSON_CreateString(rank_purpose));
 	cJSON_AddItemToObject(hunter_table, name_purpose, purpose);
 	save_in_file(root, "ikingdom.json");
@@ -683,10 +565,7 @@ int set_purpose(cJSON *root, char *name_purpose, char *rank_purpose){
 
 // добавление с нуля, возвращает -1 если плохо все
 int create_ikingdom(cJSON *root){
-	if(root == NULL){
-		printf("Не удалось принять структуру json в create_ikingdom\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(root, "Не удалось принять структуру json в create_ikingdom\n");
 
 	if(add_time(root) < 0){
 		printf("Не удалось создать время\n");
@@ -695,18 +574,12 @@ int create_ikingdom(cJSON *root){
 	
 	// добавление хп
 	cJSON *health_point = cJSON_CreateNumber(150);
-	if(health_point == NULL){
-		printf("не удалось создать объект health_point\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(health_point, "не удалось создать объект health_point\n");
 	cJSON_AddItemToObject(root, "health_point", health_point);
 
 	// общая вкладка скиллов
 	cJSON *skills = cJSON_CreateObject();
-	if(skills == NULL){
-		printf("не удалось создать объект skills\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(skills, "не удалось создать объект skills\n");
 
 	// вкладка стандартных скиллов
 	cJSON *standart_skills = cJSON_CreateObject();
@@ -736,17 +609,12 @@ int create_ikingdom(cJSON *root){
 
 	// создаем и добавляем кузню
 	cJSON *forge = cJSON_CreateObject();
-	if(forge == NULL){
-		printf("не удалось создать объект forge\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(forge, "не удалось создать объект forge\n");
 	cJSON_AddItemToObject(root, "forge", forge);
 
 	cJSON *forge_count = cJSON_CreateNumber(0);
-	if(forge_count == NULL){
-		printf("Не удалось создать объект *forge_count\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(forge_count, "Не удалось создать объект *forge_count\n");
+	
 	cJSON_AddItemToObject(forge, "big_achievements", forge_count);
 	if(add_time(forge) < 0){
 		printf("Не удалось добавить время кузнице\n");
@@ -755,10 +623,8 @@ int create_ikingdom(cJSON *root){
 
 	// создаем стол контрактов
 	cJSON *hunter_table = cJSON_CreateObject();
-	if(hunter_table == NULL){
-		printf("Не удалось создать стол контрактов\n");
-		return ERR1;
-	}
+	CHECK_NULL_ERR1(hunter_table, "Не удалось создать стол контрактов\n");
+	
 	cJSON_AddItemToObject(root, "hunter_table", hunter_table);
 	if(add_time(hunter_table) < 0){
 		printf("Не удалось добавить время столку контрактов\n");
@@ -775,10 +641,7 @@ cJSON* check_create_ikingdom(){
 	cJSON *root = file_in_json("ikingdom.json");
 	if(root == NULL){
 		root = cJSON_CreateObject();
-		if(root == NULL){
-			printf("Не создается структура root");
-			return NULL;
-		}
+		CHECK_NULL(root, "Не создается структура root\n");
 		if(create_ikingdom(root) < 0){
 			printf("Не удалось добавить поля для ikingdom");
 			return NULL;
@@ -796,10 +659,7 @@ cJSON* check_create_ikingdom(){
 	if(check_hp == NULL){
 		// создаем хп
 		cJSON *health_point = cJSON_CreateNumber(150);
-		if(health_point == NULL){
-			printf("не удалось создать объект health_point\n");
-			return NULL; 
-		}
+		CHECK_NULL(health_point, "не удалось создать объект health_point\n");
 		cJSON_AddItemToObject(root, "health_point", health_point);
 		save_in_file(root, "ikingdom.json");
 	}
@@ -811,10 +671,7 @@ cJSON* check_create_ikingdom(){
 	if(check_skills == NULL){
 		// общая вкладка скиллов
 		cJSON *skills = cJSON_CreateObject();
-		if(skills == NULL){
-			printf("не удалось создать объект skills\n");
-			return NULL;
-		}
+		CHECK_NULL(skills, "не удалось создать объект skills\n");
 
 		// вкладка стандартных скиллов
 		cJSON *standart_skills = cJSON_CreateObject();
@@ -853,10 +710,7 @@ cJSON* check_create_ikingdom(){
 	if(check_forge == NULL){
 		// создаем и добавляем поле
 		cJSON *forge = cJSON_CreateObject();
-		if(forge == NULL){
-			printf("не удалось создать объект forge\n");
-			return NULL;
-		}
+		CHECK_NULL(forge, "не удалось создать объект forge\n");
 		if(add_time(forge) < 0){
 			printf("Не удалось создать время\n");
 			return NULL;
@@ -869,10 +723,7 @@ cJSON* check_create_ikingdom(){
 	if(check_table == NULL){
 		// создаем и добавляем поле
 		cJSON *hunter_table = cJSON_CreateObject();
-		if(hunter_table == NULL){
-			printf("не удалось создать объект hunter_table\n");
-			return NULL;
-		}
+		CHECK_NULL(hunter_table, "не удалось создать объект hunter_table\n");
 		if(add_time(hunter_table) < 0){
 			printf("Не удалось создать время\n");
 			return NULL;
