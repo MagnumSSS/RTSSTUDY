@@ -30,6 +30,14 @@
         } \
     } while(0)
 
+#define CHECK_NULL_ISNUMBER(ptr, msg) \
+    do { \
+        if ((ptr) == NULL || !(cJSON_IsNumber(ptr))) { \
+            printf("%s\n", msg); \
+            return ERR1; \
+        } \
+    } while(0)
+
 
 // структура для времени
 typedef struct{
@@ -161,30 +169,21 @@ int set_day(cJSON *root, Time time){
 	CHECK_NULL_ERR1(obj_time, "Не удалось достать объект time в set_day\n");
 
 	cJSON *obj_day = cJSON_GetObjectItem(obj_time, "DAY");
-	if(obj_day == NULL && !(cJSON_IsNumber(obj_day))){
-		printf("Не удалось вытащить DAY\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(obj_day, "Не удалось вытащить DAY\n");
 	cJSON_SetNumberValue(obj_day, time.Day);
 
 	//printf("time.Day: %d\n", time.Day);
 	//printf("DAY: %d\n", obj_day->valueint);
 
 	cJSON *obj_month = cJSON_GetObjectItem(obj_time, "MONTH");
-	if(obj_month == NULL && !(cJSON_IsNumber(obj_month))){
-		printf("Не удалось вытащить MONTH\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(obj_month, "Не удалось вытащить MONTH\n");
 	cJSON_SetNumberValue(obj_month, time.Month);
 
 	//printf("time.Month: %d\n", time.Month);
 	//printf("MONTH: %d\n", obj_month->valueint);
 
 	cJSON *obj_year = cJSON_GetObjectItem(obj_time, "YEAR");
-	if(obj_year == NULL && !(cJSON_IsNumber(obj_year))){
-		printf("Не удалось вытащить YEAR\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(obj_year, "Не удалось вытащить YEAR\n");
 	cJSON_SetNumberValue(obj_year, time.Year);
 	
 	//printf("time.Year: %d\n", time.Year);
@@ -265,24 +264,15 @@ int math_up(cJSON *skill, int count){
 	CHECK_NULL_ERR1(skill, "Не удается достать skill в math_up\n");
 	
 	cJSON *xp = cJSON_GetObjectItem(skill, "xp");
-	if(xp == NULL && !(cJSON_IsNumber(xp))){
-		printf("Не удается достать xp в math_up\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(xp, "Не удается достать xp в math_up\n");
 	int ixp = xp->valueint;
 
 	cJSON *level = cJSON_GetObjectItem(skill, "level");
-	if(level == NULL && !(cJSON_IsNumber(level))){
-		printf("Не удается достать level в math_up\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(level, "Не удается достать level в math_up\n");
 	int ilevel = level->valueint;
 
 	cJSON *thrhold_next = cJSON_GetObjectItem(skill, "threshold_next");
-	if(thrhold_next == NULL && !(cJSON_IsNumber(thrhold_next))){
-		printf("Не удается достать threshold_next в math_up\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(thrhold_next, "Не удается достать threshold_next в math_up\n");
 	int ith_next = thrhold_next->valueint;
 
 
@@ -313,10 +303,6 @@ int up_standart_skill(cJSON *root, char *name, int count){
 
 	cJSON *skills = cJSON_GetObjectItem(root, "skills");
 	CHECK_NULL_ERR1(skills, "Не удалось вытащить skills в up_standart_skill\n");
-	if(skills == NULL){
-		printf("Не удалось вытащить skills в up_standart_skill\n");
-		return ERR1;
-	}
 
 	cJSON *standart_skills = cJSON_GetObjectItem(skills, "standart_skills");
 	CHECK_NULL_ERR1(standart_skills, "Не удалось вытащить standart_skills в up_standart_skill\n");
@@ -383,10 +369,7 @@ int add_big_ach(cJSON *root, int count){
 	CHECK_NULL_ERR1(forge, "Не удалось достать структуру forge в add_big_ach\n");
 	
 	cJSON *big_achievements = cJSON_GetObjectItem(forge, "big_achievements");
-	if(big_achievements == NULL && !(cJSON_IsNumber(big_achievements))){
-		printf("Не удалось достать big_achievements\n");	
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(big_achievements, "Не удалось достать big_achievements\n");
 	int count_forge = big_achievements->valueint;
 
 	count_forge += count;
@@ -478,16 +461,10 @@ int reading_book(cJSON *root, cJSON *l_root, char *name, int count_pages){
 
 	// достаем поле колво страниц, колво прочитанных и статус
 	cJSON *pages_obj = cJSON_GetObjectItem(book_obj, "pages");
-	if(pages_obj == NULL && !(cJSON_IsNumber(pages_obj))){
-		printf("Не удалось достать объект pages\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(pages_obj, "Не удалось достать объект pages\n");
 
 	cJSON *rdpages_obj = cJSON_GetObjectItem(book_obj, "reading_pages");
-	if(rdpages_obj == NULL && !(cJSON_IsNumber(rdpages_obj))){
-		printf("Не удалось достать объект reading_pages\n");
-		return ERR1;
-	}
+	CHECK_NULL_ISNUMBER(rdpages_obj, "Не удалось достать объект reading_pages\n");
 
 	cJSON *status_obj = cJSON_GetObjectItem(book_obj, "status");
 	if(status_obj == NULL && !(cJSON_IsString(status_obj))){
@@ -857,6 +834,8 @@ int main(int argc, char *argv[]){
 			cJSON_Delete(library);
 			return 0;
 		}
+	}
+	else if(argc == 3 && strcmp(argv[1], "battle") == 0){
 	}
 
 	else {
