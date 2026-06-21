@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include "cJSON.h"
 
 #define ERR1 -1
@@ -50,6 +51,8 @@ typedef struct{
 void save_in_file(cJSON *root, char *name);
 cJSON* file_in_json(char *name);
 int add_time(cJSON *root);
+int up_standart_skill(cJSON *root, char *name, int count);
+int fit_time_root(cJSON *root, cJSON *object);
 
 // загрузка из файла в json
 cJSON* file_in_json(char *name){
@@ -111,6 +114,462 @@ void save_in_file(cJSON *root, char *name){
 	cJSON_free(json_txt);
 	fclose(fp);
 }
+
+// подсчет дней между датами
+int calculate_days_passed(cJSON *last_time, cJSON *current_time) {
+    CHECK_NULL_ERR1(last_time, "Не удалось достать last_time в calculate_days_passed");
+    CHECK_NULL_ERR1(current_time, "Не удалось достать current_time в calculate_days_passed");
+    
+    int last_day = cJSON_GetObjectItem(last_time, "DAY")->valueint;
+    int last_month = cJSON_GetObjectItem(last_time, "MONTH")->valueint;
+    int last_year = cJSON_GetObjectItem(last_time, "YEAR")->valueint;
+    
+    int curr_day = cJSON_GetObjectItem(current_time, "DAY")->valueint;
+    int curr_month = cJSON_GetObjectItem(current_time, "MONTH")->valueint;
+    int curr_year = cJSON_GetObjectItem(current_time, "YEAR")->valueint;
+    
+    // Простой подсчёт (без учёта високосных лет, для простоты)
+    int days_in_month[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    
+    // Переводим в дни с начала года
+    int last_total_days = last_day;
+    for (int i = 1; i < last_month; i++) {
+        last_total_days += days_in_month[i];
+    }
+    last_total_days += (last_year - 2000) * 365; // Грубый подсчёт
+    
+    int curr_total_days = curr_day;
+    for (int i = 1; i < curr_month; i++) {
+        curr_total_days += days_in_month[i];
+    }
+    curr_total_days += (curr_year - 2000) * 365;
+    
+    int diff = curr_total_days - last_total_days;
+    return diff > 0 ? diff : 0;
+}
+
+// Функция тления стихий
+void check_skill_decay(cJSON *root, cJSON *skills_group) {
+    if (!skills_group) return;
+    cJSON *current_time = cJSON_GetObjectItem(root, "time");
+    cJSON *skill = skills_group->child;
+    
+    while (skill) {
+        cJSON *skill_time = cJSON_GetObjectItem(skill, "time");
+        if (skill_time) {
+            int days_passed = calculate_days_passed(skill_time, current_time);
+            if (days_passed > 7) {
+                cJSON *level = cJSON_GetObjectItem(skill, "level");
+                cJSON *xp = cJSON_GetObjectItem(skill, "xp");
+                if (level && level->valueint > 0) {
+                    cJSON_SetNumberValue(level, level->valueint - 1);
+                    cJSON_SetNumberValue(xp, 0);
+                    printf("🍂 Стихия '%s' тлеет! Уровень снижен до %d (не использовалась %d дн.)\n", 
+                           skill->string, level->valueint, days_passed);
+                    // Обновляем время, чтобы не тлела каждый день подряд
+                    fit_time_root(root, skill); 
+                }
+            }
+        }
+        skill = skill->next;
+    }
+}
+
+// Хелпер: просто обновить время скилла без прокачки (чтобы не тлел)
+void update_skill_time_only(cJSON *root, char *skill_name) {
+    cJSON *skills = cJSON_GetObjectItem(root, "skills");
+    cJSON *standart = cJSON_GetObjectItem(skills, "standart_skills");
+    cJSON *my = cJSON_GetObjectItem(skills, "my_skills");
+    
+    cJSON *target_skill = cJSON_GetObjectItem(standart, skill_name);
+    if (!target_skill) target_skill = cJSON_GetObjectItem(my, skill_name);
+    
+    if (target_skill) {
+        fit_time_root(root, target_skill);
+    }
+}
+
+// Подсчет общей Силы Королевства
+int calculate_kingdom_power(cJSON *root) {
+    int power = 0;
+    
+    // 1. Сумма уровней всех скиллов
+    cJSON *skills = cJSON_GetObjectItem(root, "skills");
+    cJSON *groups[] = {
+        cJSON_GetObjectItem(skills, "standart_skills"),
+        cJSON_GetObjectItem(skills, "my_skills")
+    };
+    
+    for (int i = 0; i < 2; i++) {
+        if (!groups[i]) continue;
+        cJSON *skill = groups[i]->child;
+        while (skill) {
+            cJSON *lvl = cJSON_GetObjectItem(skill, "level");
+            if (lvl) power += lvl->valueint;
+            skill = skill->next;
+        }
+    }
+    
+    // 2. Артефакты (используем big_achievements как счетчик)
+    cJSON *forge = cJSON_GetObjectItem(root, "forge");
+    cJSON *arts = cJSON_GetObjectItem(forge, "big_achievements");
+    if (arts) power += arts->valueint * 2; // 2 очка силы за артефакт
+    
+    // 3. Прочитанные книги
+    cJSON *library = file_in_json("library.json");
+    if (library) {
+        cJSON *book = library->child;
+        while (book) {
+            cJSON *status = cJSON_GetObjectItem(book, "status");
+            if (status && strcmp(status->valuestring, "Прочитано") == 0) {
+                power += 3; // 3 очка силы за прочитанную книгу
+            }
+            book = book->next;
+        }
+        cJSON_Delete(library);
+    }
+    
+    return power;
+}
+
+// Масштабирование Моргота при спавне
+void scale_morgoth(cJSON *root) {
+    int power = calculate_kingdom_power(root);
+    int new_max_hp = 500 + (power * 10); // Коэффициент 10, чтобы он не был.immortal
+    
+    cJSON *morgoth = cJSON_GetObjectItem(root, "morgoth");
+    cJSON_SetNumberValue(cJSON_GetObjectItem(morgoth, "max_hp"), new_max_hp);
+    cJSON_SetNumberValue(cJSON_GetObjectItem(morgoth, "hp"), new_max_hp); // Полный хил
+    
+    printf("📈 Сила Королевства: %d. Моргот мутирует! Max HP: %d\n", power, new_max_hp);
+}
+
+// Применяем баффы/дебаффы от образования в начале сессии
+void apply_education_modifiers(cJSON *root) {
+    int player_buff = 0;
+    int morgoth_buff = 0;
+    
+    cJSON *library = file_in_json("library.json");
+    if (!library) return;
+    
+    cJSON *book = library->child;
+    while (book) {
+        cJSON *status = cJSON_GetObjectItem(book, "status");
+        if (status && cJSON_IsString(status)) {
+            if (strcmp(status->valuestring, "В процессе чтения") == 0) {
+                player_buff += 5; // +5% к твоему урону за каждую активную книгу
+            }
+            if (strcmp(status->valuestring, "Заброшено") == 0) {
+                morgoth_buff += 10; // +10% к урону Моргота за каждую заброшенную
+            }
+        }
+        book = book->next;
+    }
+    cJSON_Delete(library);
+    
+    // Сохраняем в дебаффы (используем существующие поля для простоты)
+    cJSON *debuffs = cJSON_GetObjectItem(root, "debuffs");
+    if (player_buff > 0) {
+        printf("🧠 Образование: Ты читаешь книги. Твой урон +%d%%\n", player_buff);
+        // Вычтем из твоего damage_reduction (сделаем его отрицательным, если нужно, или добавим новое поле)
+        // Для простоты: просто добавим к morgoth_damage_bonus_percent отрицательное значение, 
+        // но лучше добавить новые поля. Давай добавим education_buff в debuffs.
+    }
+    if (morgoth_buff > 0) {
+        printf("📉 Невежество: У тебя %d заброшенных книг. Моргот бьет на %d%% сильнее!\n", morgoth_buff / 10, morgoth_buff);
+        cJSON *m_bonus = cJSON_GetObjectItem(debuffs, "morgoth_damage_bonus_percent");
+        cJSON_SetNumberValue(m_bonus, m_bonus->valueint + morgoth_buff);
+    }
+}
+
+// открытие сессии
+int battle_start(cJSON *root) {
+    CHECK_NULL_ERR1(root, "Не удалось достать root в battle_start");
+    cJSON *week = cJSON_GetObjectItem(root, "week_battle");
+    cJSON *morgoth = cJSON_GetObjectItem(root, "morgoth");
+
+    // 1. Проверяем тление стихий
+    cJSON *skills = cJSON_GetObjectItem(root, "skills");
+    check_skill_decay(root, cJSON_GetObjectItem(skills, "standart_skills"));
+    check_skill_decay(root, cJSON_GetObjectItem(skills, "my_skills"));
+
+    if (cJSON_IsTrue(cJSON_GetObjectItem(week, "active"))) {
+        cJSON_ReplaceItemInObject(week, "active_now", cJSON_CreateBool(true));
+        
+        // Проверяем пропуск
+        cJSON *last_session = cJSON_GetObjectItem(week, "last_session_time");
+        cJSON *current_time = cJSON_GetObjectItem(root, "time");
+        int days_passed = calculate_days_passed(last_session, current_time);
+        
+        if (days_passed > 1) {
+            printf("⚠️ ПРОПУСК ОБНАРУЖЕН! Ты отсутствовал %d дн.\n", days_passed);
+            cJSON *debuffs = cJSON_GetObjectItem(root, "debuffs");
+            
+            // Моргот отхиливается
+            int heal_amount = days_passed * 20;
+            cJSON *hp = cJSON_GetObjectItem(morgoth, "hp");
+            cJSON *max_hp = cJSON_GetObjectItem(morgoth, "max_hp");
+            int new_hp = hp->valueint + heal_amount;
+            if (new_hp > max_hp->valueint) new_hp = max_hp->valueint;
+            cJSON_SetNumberValue(hp, new_hp);
+            printf("🐺 Моргот отхилился на %d HP (HP: %d/%d)\n", heal_amount, new_hp, max_hp->valueint);
+            
+            // Дебаффы за пропуск
+            cJSON *damage_reduction = cJSON_GetObjectItem(debuffs, "damage_reduction_percent");
+            int new_reduction = damage_reduction->valueint + (days_passed * 10);
+            if (new_reduction > 50) new_reduction = 50;
+            cJSON_SetNumberValue(damage_reduction, new_reduction);
+            printf("⚔️ Твой урон снижен на %d%% (дебафф за пропуск)\n", new_reduction);
+            
+            cJSON *morgoth_bonus = cJSON_GetObjectItem(debuffs, "morgoth_damage_bonus_percent");
+            int new_bonus = morgoth_bonus->valueint + (days_passed * 10);
+            if (new_bonus > 50) new_bonus = 50;
+            cJSON_SetNumberValue(morgoth_bonus, new_bonus);
+            printf("💀 Урон Моргота увеличен на %d%% (дебафф за пропуск)\n", new_bonus);
+        }
+    } else {
+        // Новая битва -> Масштабируем Моргота!
+        scale_morgoth(root);
+        
+        cJSON_ReplaceItemInObject(week, "active", cJSON_CreateBool(true));
+        cJSON_ReplaceItemInObject(week, "active_now", cJSON_CreateBool(true));
+        cJSON_SetNumberValue(cJSON_GetObjectItem(week, "sessions_count"), 0);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(week, "total_damage_dealt"), 0);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(week, "total_damage_taken"), 0);
+        
+        cJSON *time = cJSON_GetObjectItem(root, "time");
+        cJSON *start_time = cJSON_GetObjectItem(week, "start_time");
+        cJSON_SetNumberValue(cJSON_GetObjectItem(start_time, "DAY"), cJSON_GetObjectItem(time, "DAY")->valueint);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(start_time, "MONTH"), cJSON_GetObjectItem(time, "MONTH")->valueint);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(start_time, "YEAR"), cJSON_GetObjectItem(time, "YEAR")->valueint);
+        
+        printf("⚔️ КАМПАНИЯ НАЧАТА!\n");
+    }
+
+    // 2. Применяем механику образования
+    apply_education_modifiers(root);
+
+    // Обновляем last_session_time
+    cJSON *time = cJSON_GetObjectItem(root, "time");
+    cJSON *last_session = cJSON_GetObjectItem(week, "last_session_time");
+    cJSON_SetNumberValue(cJSON_GetObjectItem(last_session, "DAY"), cJSON_GetObjectItem(time, "DAY")->valueint);
+    cJSON_SetNumberValue(cJSON_GetObjectItem(last_session, "MONTH"), cJSON_GetObjectItem(time, "MONTH")->valueint);
+    cJSON_SetNumberValue(cJSON_GetObjectItem(last_session, "YEAR"), cJSON_GetObjectItem(time, "YEAR")->valueint);
+
+    printf("🐺 HP Моргота: %d/%d\n", cJSON_GetObjectItem(morgoth, "hp")->valueint, cJSON_GetObjectItem(morgoth, "max_hp")->valueint);
+    printf("🦌 HP Цитадели: %d/150\n", cJSON_GetObjectItem(root, "health_point")->valueint);
+    
+    save_in_file(root, "ikingdom.json");
+    return 1;
+}
+
+
+// моя атака
+int battle_attack(cJSON *root, char *action_type, int hours) {
+    CHECK_NULL_ERR1(root, "Не удалось достать root в battle_attack");
+    cJSON *week = cJSON_GetObjectItem(root, "week_battle");
+    if (!cJSON_IsTrue(cJSON_GetObjectItem(week, "active_now"))) {
+        printf("❌ Сессия не активна!\n");
+        return ERR1;
+    }
+
+    int base_damage = hours * 15;
+    
+    // 1. Бафф от образования (активно читаемые книги)
+    int edu_buff = 0;
+    cJSON *library = file_in_json("library.json");
+    if (library) {
+        cJSON *book = library->child;
+        while (book) {
+            cJSON *status = cJSON_GetObjectItem(book, "status");
+            if (status && strcmp(status->valuestring, "В процессе чтения") == 0) edu_buff += 5;
+            book = book->next;
+        }
+        cJSON_Delete(library);
+    }
+    base_damage = base_damage * (100 + edu_buff) / 100;
+
+    // 2. Дебафф за пропуск
+    cJSON *debuffs = cJSON_GetObjectItem(root, "debuffs");
+    int reduction = cJSON_GetObjectItem(debuffs, "damage_reduction_percent")->valueint;
+    int final_damage = base_damage * (100 - reduction) / 100;
+
+    // Наносим урон
+    cJSON *morgoth = cJSON_GetObjectItem(root, "morgoth");
+    cJSON *hp = cJSON_GetObjectItem(morgoth, "hp");
+    int new_hp = hp->valueint - final_damage;
+    if (new_hp < 0) new_hp = 0;
+    cJSON_SetNumberValue(hp, new_hp);
+
+    cJSON *total_dealt = cJSON_GetObjectItem(week, "total_damage_dealt");
+    cJSON_SetNumberValue(total_dealt, total_dealt->valueint + final_damage);
+
+    printf("⚔️ Ты атакуешь (%s, %d часов)!\n", action_type, hours);
+    printf("💥 Урон: %d", final_damage);
+    if (reduction > 0) printf(" (дебафф -%d%%)", reduction);
+    if (edu_buff > 0) printf(" (книги +%d%%)", edu_buff);
+    printf("\n");
+    printf("🐺 HP Моргота: %d/%d\n", new_hp, cJSON_GetObjectItem(morgoth, "max_hp")->valueint);
+
+    // 3. Обновляем время скилла, чтобы он не тлел (без прокачки!)
+    if (strcmp(action_type, "train") == 0) update_skill_time_only(root, "focus");
+    else if (strcmp(action_type, "code") == 0) update_skill_time_only(root, "discipline");
+    else if (strcmp(action_type, "read") == 0) update_skill_time_only(root, "structure");
+
+    save_in_file(root, "ikingdom.json");
+    return 1;
+}
+
+// атака моргота
+int battle_morgoth_attack(cJSON *root, char *attack_type, int hours) {
+    CHECK_NULL_ERR1(root, "Не удалось достать root в battle_morgoth_attack");
+    cJSON *week = cJSON_GetObjectItem(root, "week_battle");
+    if (!cJSON_IsTrue(cJSON_GetObjectItem(week, "active_now"))) {
+        printf("❌ Сессия не активна!\n");
+        return ERR1;
+    }
+
+    int base_damage = hours * 10;
+
+    // 1. Бонус Моргота от дебаффов (пропуск + заброшенные книги)
+    cJSON *debuffs = cJSON_GetObjectItem(root, "debuffs");
+    int bonus = cJSON_GetObjectItem(debuffs, "morgoth_damage_bonus_percent")->valueint;
+    int damage_with_bonus = base_damage * (100 + bonus) / 100;
+
+    // 2. Броня Кузни (Артефакты снижают урон)
+    cJSON *forge = cJSON_GetObjectItem(root, "forge");
+    int artifacts_count = cJSON_GetObjectItem(forge, "big_achievements")->valueint;
+    int armor_percent = artifacts_count * 2; // 2% за каждый артефакт
+    if (armor_percent > 50) armor_percent = 50; // Кап 50%
+    
+    int final_damage = damage_with_bonus * (100 - armor_percent) / 100;
+
+    // Наносим урон Цитадели
+    cJSON *citadel_hp = cJSON_GetObjectItem(root, "health_point");
+    int new_hp = citadel_hp->valueint - final_damage;
+    if (new_hp < 0) new_hp = 0;
+    cJSON_SetNumberValue(citadel_hp, new_hp);
+
+    cJSON *total_taken = cJSON_GetObjectItem(week, "total_damage_taken");
+    cJSON_SetNumberValue(total_taken, total_taken->valueint + final_damage);
+
+    printf("🐺 Моргот атакует (%s, %d часов)!\n", attack_type, hours);
+    printf("💔 Урон по Цитадели: %d", final_damage);
+    if (bonus > 0) printf(" (бонус Моргота +%d%%)", bonus);
+    if (armor_percent > 0) printf(" (Броня Кузни -%d%%)", armor_percent);
+    printf("\n");
+    printf("🦌 HP Цитадели: %d/150\n", new_hp);
+
+    save_in_file(root, "ikingdom.json");
+    return 1;
+}
+
+// закрытие сессии
+int battle_end(cJSON *root) {
+    CHECK_NULL_ERR1(root, "Не удалось достать root в battle_end");
+    
+    cJSON *week = cJSON_GetObjectItem(root, "week_battle");
+    if (!cJSON_IsTrue(cJSON_GetObjectItem(week, "active"))) {
+        printf("❌ Недельная битва не активна!\n");
+        return ERR1;
+    } else if(!cJSON_IsTrue(cJSON_GetObjectItem(week, "active_now"))){
+				printf("❌ Битва не активна!\n");
+				return ERR1;
+		}
+    
+    cJSON *morgoth = cJSON_GetObjectItem(root, "morgoth");
+    cJSON *morgoth_hp = cJSON_GetObjectItem(morgoth, "hp");
+    cJSON *citadel_hp = cJSON_GetObjectItem(root, "health_point");
+    
+    // Увеличиваем счётчик сессий
+    cJSON *sessions = cJSON_GetObjectItem(week, "sessions_count");
+    cJSON_SetNumberValue(sessions, sessions->valueint + 1);
+    
+    printf("\n📊 ИТОГ СЕССИИ #%d\n", sessions->valueint);
+    printf("💥 Нанесено урона: %d\n", cJSON_GetObjectItem(week, "total_damage_dealt")->valueint);
+    printf("💔 Получено урона: %d\n", cJSON_GetObjectItem(week, "total_damage_taken")->valueint);
+    printf("🐺 HP Моргота: %d/%d\n", morgoth_hp->valueint, cJSON_GetObjectItem(morgoth, "max_hp")->valueint);
+    printf("🦌 HP Цитадели: %d/150\n\n", citadel_hp->valueint);
+
+		// закрываем дебаффы, чтобы не длились бесконечно
+		cJSON *debuffs = cJSON_GetObjectItem(root, "debuffs");
+
+    cJSON *damage_reduction = cJSON_GetObjectItem(debuffs, "damage_reduction_percent");
+		int new_reduction = 0;
+    cJSON_SetNumberValue(damage_reduction, new_reduction);
+
+		cJSON *morgoth_bonus = cJSON_GetObjectItem(debuffs, "morgoth_damage_bonus_percent");
+    int new_bonus = 0;
+    cJSON_SetNumberValue(morgoth_bonus, new_bonus);
+
+		// ставим active_now на false
+    cJSON_ReplaceItemInObject(week, "active_now", cJSON_CreateBool(false));
+
+    // Проверяем победу
+    if (morgoth_hp->valueint <= 0) {
+        printf("🏆 ПОБЕДА! Моргот отступает!\n");
+        cJSON_SetValuestring(cJSON_GetObjectItem(morgoth, "status"), "retreated");
+        
+        // Устанавливаем время отступления (2-3 дня)
+        cJSON *time = cJSON_GetObjectItem(root, "time");
+        cJSON *retreat = cJSON_GetObjectItem(morgoth, "retreat_until");
+        int current_day = cJSON_GetObjectItem(time, "DAY")->valueint;
+        int current_month = cJSON_GetObjectItem(time, "MONTH")->valueint;
+        int current_year = cJSON_GetObjectItem(time, "YEAR")->valueint;
+        
+        int retreat_days = 2 + (rand() % 2); // 2 или 3 дня
+        int new_day = current_day + retreat_days;
+        int new_month = current_month;
+        int new_year = current_year;
+        
+        if (new_day > 30) {
+            new_day -= 30;
+            new_month++;
+            if (new_month > 12) {
+                new_month = 1;
+                new_year++;
+            }
+        }
+        
+        cJSON_SetNumberValue(cJSON_GetObjectItem(retreat, "DAY"), new_day);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(retreat, "MONTH"), new_month);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(retreat, "YEAR"), new_year);
+        
+        printf("🛡️ Отдыхай до %d.%d.%d\n", new_day, new_month, new_year);
+        
+        // Сбрасываем дебаффы
+        cJSON *debuffs = cJSON_GetObjectItem(root, "debuffs");
+        cJSON_SetNumberValue(cJSON_GetObjectItem(debuffs, "damage_reduction_percent"), 0);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(debuffs, "morgoth_damage_bonus_percent"), 0);
+        
+        // Деактивируем неделю
+        cJSON_ReplaceItemInObject(week, "active", cJSON_CreateBool(false));
+        
+    } else if (citadel_hp->valueint <= 0) {
+        printf("💀 ПОРАЖЕНИЕ! Моргот торжествует!\n");
+        
+        // Применяем дебаффы
+        cJSON *debuffs = cJSON_GetObjectItem(root, "debuffs");
+        int current_reduction = cJSON_GetObjectItem(debuffs, "damage_reduction_percent")->valueint;
+        cJSON_SetNumberValue(cJSON_GetObjectItem(debuffs, "damage_reduction_percent"), current_reduction + 20);
+        cJSON_SetNumberValue(cJSON_GetObjectItem(debuffs, "morgoth_heal_amount"), 50);
+        
+        printf("⚠️ Дебаффы на следующую сессию:\n");
+        printf("   - Урон снижен на %d%%\n", current_reduction + 20);
+        printf("   - Моргот отхилится на 50 HP\n");
+        
+        // Восстанавливаем HP Цитадели (частично)
+        cJSON_SetNumberValue(citadel_hp, 50);
+        printf("🦌 Цитадель частично восстановлена: 50/150\n");
+        
+    } else {
+        printf("⏳ Битва продолжается...\n");
+    }
+    
+    save_in_file(root, "ikingdom.json");
+    return 1;
+}
+
 
 // добавление полей для стихий
 int add_field_elements(cJSON *object){
@@ -502,27 +961,25 @@ int reading_book(cJSON *root, cJSON *l_root, char *name, int count_pages){
 	return 1;
 }
 
-/* пока не знаю зачем парсер ранга
-int parse_rank(char *rank){
-	if(rank == NULL){
-		printf("Не удалось прочитать ранг цели\n");
-		return ERR1;
-	}
-
-
-	int ranks_eq_number = 90;
-	char *ranks[] = {"S", "A", "B", "C", "D"};
-	int size = sizeof(ranks) / sizeof(ranks[0]);
-	for(int i = 0; i < size; i++){
-		if(strcmp(rank, ranks[i]) == 0){
-			return ranks_eq_number;
-		}
-		ranks_eq_number 
-	}	
-	
+// Функция заброса книги
+int abandon_book(cJSON *l_root, char *name) {
+    CHECK_NULL_ERR1(l_root, "Библиотека не найдена в abandon_book");
+    cJSON *book_obj = cJSON_GetObjectItem(l_root, name);
+    CHECK_NULL_ERR1(book_obj, "Книга не найдена");
+    
+    cJSON *status = cJSON_GetObjectItem(book_obj, "status");
+    if (strcmp(status->valuestring, "Прочитано") == 0) {
+        printf("Нельзя забросить прочитанную книгу!\n");
+        return ERR1;
+    }
+    
+    cJSON_SetValuestring(status, "Заброшено");
+    save_in_file(l_root, "library.json");
+    printf("📉 Книга '%s' заброшена. Моргот рад.\n", name);
+    return 1;
 }
-*/
 
+// установка цели
 int set_purpose(cJSON *root, char *name_purpose, char *rank_purpose){
 	CHECK_NULL_ERR1(root, "Не удалось принять структуру json в set_purpose\n");
 	CHECK_NULL_ERR1(name_purpose, "Не удалось принять имя цели в set_purpose\n");
@@ -607,7 +1064,54 @@ int create_ikingdom(cJSON *root){
 		printf("Не удалось добавить время столку контрактов\n");
 		return ERR1;
 	}
+
+	// создаем поля о "недельной" битве	
+cJSON *week_battle = cJSON_CreateObject();
+CHECK_NULL_ERR1(week_battle, "Не удалось создать week_battle");
+cJSON_AddItemToObject(week_battle, "active", cJSON_CreateBool(false));
+cJSON_AddItemToObject(week_battle, "active_now", cJSON_CreateBool(false));
+
+cJSON *start_time = cJSON_CreateObject();
+cJSON_AddItemToObject(start_time, "DAY", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(start_time, "MONTH", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(start_time, "YEAR", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(week_battle, "start_time", start_time);
+
+cJSON *last_session = cJSON_CreateObject();
+cJSON_AddItemToObject(last_session, "DAY", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(last_session, "MONTH", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(last_session, "YEAR", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(week_battle, "last_session_time", last_session);
+
+cJSON_AddItemToObject(week_battle, "sessions_count", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(week_battle, "total_damage_dealt", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(week_battle, "total_damage_taken", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(root, "week_battle", week_battle);
+
+// Моргот
+cJSON *morgoth = cJSON_CreateObject();
+CHECK_NULL_ERR1(morgoth, "Не удалось создать morgoth");
+cJSON_AddItemToObject(morgoth, "hp", cJSON_CreateNumber(500));
+cJSON_AddItemToObject(morgoth, "max_hp", cJSON_CreateNumber(500));
+cJSON_AddItemToObject(morgoth, "level", cJSON_CreateNumber(1));
+cJSON_AddItemToObject(morgoth, "status", cJSON_CreateString("active"));
+
+cJSON *retreat = cJSON_CreateObject();
+cJSON_AddItemToObject(retreat, "DAY", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(retreat, "MONTH", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(retreat, "YEAR", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(morgoth, "retreat_until", retreat);
+cJSON_AddItemToObject(root, "morgoth", morgoth);
+
+// Дебаффы
+cJSON *debuffs = cJSON_CreateObject();
+CHECK_NULL_ERR1(debuffs, "Не удалось создать debuffs");
+cJSON_AddItemToObject(debuffs, "damage_reduction_percent", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(debuffs, "morgoth_heal_amount", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(debuffs, "morgoth_damage_bonus_percent", cJSON_CreateNumber(0));
+cJSON_AddItemToObject(root, "debuffs", debuffs);
 	
+
 	return 1;
 }
 	
@@ -834,10 +1338,36 @@ int main(int argc, char *argv[]){
 			cJSON_Delete(library);
 			return 0;
 		}
+	} // Заброшенная книга
+	else if(argc == 3 && strcmp(argv[1], "abandon_book") == 0) {
+		  cJSON *library = create_library();
+			if (library == NULL) { cJSON_Delete(root); return 0; }
+			abandon_book(library, argv[2]);
+			cJSON_Delete(root);
+			cJSON_Delete(library);
+			return 0;
 	}
-	else if(argc == 3 && strcmp(argv[1], "battle") == 0){
+	// battle start
+	else if(argc == 2 && strcmp(argv[1], "battle") == 0) {
+    battle_start(root);
+    save_in_file(root, "ikingdom.json");
 	}
-
+	// battle attack <type> <hours>
+	else if(argc == 5 && strcmp(argv[1], "battle") == 0 && strcmp(argv[2], "attack") == 0) {
+    int hours = atoi(argv[4]);
+    battle_attack(root, argv[3], hours);
+    save_in_file(root, "ikingdom.json");
+	}
+	// battle morgoth <type> <hours>
+	else if(argc == 5 && strcmp(argv[1], "battle") == 0 && strcmp(argv[2], "morgoth") == 0) {
+    int hours = atoi(argv[4]);
+    battle_morgoth_attack(root, argv[3], hours);
+    save_in_file(root, "ikingdom.json");
+	}
+	// battle end
+	else if(argc == 3 && strcmp(argv[1], "battle") == 0 && strcmp(argv[2], "end") == 0) {
+    battle_end(root);
+	}
 	else {
 		printf("Вы ввели неправильную команду\n");
 	}
